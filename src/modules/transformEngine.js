@@ -25,20 +25,16 @@ export class TransformEngine {
   // ========================
 
   selectNearest(x, y) {
-    if (this.selectedStrokeId !== null) return; // already holding
-
-    // Hit-test against transformed (visually rendered) positions
-    let closestId = null;
-    let closestDist = this.moveThreshold;
-
-    for (const stroke of this.strokeManager.getAllStrokes()) {
+    if (this.selectedStrokeId !== null) return;
+    const candidates = this.strokeManager._grid.query(x, y, this.moveThreshold);
+    let closestId = null, closestDist = this.moveThreshold;
+    for (const id of candidates) {
+      const stroke = this.strokeManager.getStroke(id);
+      if (!stroke) continue;
       const tPoints = TransformEngine.getTransformedPoints(stroke);
       for (let i = 0; i < tPoints.length - 1; i++) {
         const dist = this._distToSegment(x, y, tPoints[i].x, tPoints[i].y, tPoints[i+1].x, tPoints[i+1].y);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestId = stroke.id;
-        }
+        if (dist < closestDist) { closestDist = dist; closestId = stroke.id; }
       }
       if (tPoints.length === 1) {
         const dx = x - tPoints[0].x, dy = y - tPoints[0].y;
@@ -46,12 +42,11 @@ export class TransformEngine {
         if (dist < closestDist) { closestDist = dist; closestId = stroke.id; }
       }
     }
-
     if (closestId !== null) {
       this.selectedStrokeId = closestId;
-      this.lastX = x;
-      this.lastY = y;
+      this.lastX = x; this.lastY = y;
       this._stopInertia();
+      this.strokeManager.saveTransformCheckpoint(closestId);
     }
   }
 
@@ -144,15 +139,12 @@ export class TransformEngine {
 
   releaseAll() {
     if (this.selectedStrokeId !== null) {
-      // Snap rotation on release
       this.snapRotation();
-
-      // Start inertia if there's velocity
+      this.strokeManager.commitTransformCheckpoint(this.selectedStrokeId);
       if (Math.abs(this.velocityX) > 0.5 || Math.abs(this.velocityY) > 0.5) {
         this._startInertia();
       }
     }
-
     this.selectedStrokeId = null;
     this.lastX = null;
     this.lastY = null;
